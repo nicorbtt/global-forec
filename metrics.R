@@ -23,57 +23,47 @@ metrics.mae$compute <- function(y_hat, y, mase_scal_vec) {
 # Generic Error for MASE but any norm, 1 is MASE, 2 is MSSE, ...
 metrics.mase <- NULL
 metrics.mase$name <- "MASE"
-metrics.mase$compute <-
-  function(y_hat, y, mase_scal_vec, norm = 1) {
-    y_hat <- y_hat * mase_scal_vec
-    y <- y * mase_scal_vec
-    err <- mean(abs(y_hat - y) ** norm / mase_scal_vec ** norm)
-    err
-  }
+metrics.mase$compute <- function(y_hat, y) {
+  err <- rowMeans(abs(y_hat - y))
+  err
+}
 
 # Symmetric Mean Absolute Percentage Error (sMAPE) ----------------------------
 metrics.smape <- NULL
 metrics.smape$name <- "SMAPE"
-metrics.smape$compute <- function(y_hat, y, mase_scal_vec) {
-  y_hat <- y_hat * mase_scal_vec
-  y <- y * mase_scal_vec
+metrics.smape$compute <- function(y_hat, y) {
   denom <- 0.5 * (abs(y_hat) + abs(y))
   err <- abs(y_hat -  y) / denom
   err[is.infinite(err)] <- 0
   err[abs(denom) < 1e-8] <- 0
-  err <- 100 * mean(err)
+  err <- 100 * rowMeans(err)
   err
 }
 
 ###############################################################################
 # Compute metrics given predicted and actual values ---------------------------
-metrics.compute_metrics <-
-  function(predicted, actual, mase_scal, metrics, h) {
-    tables <- list()
-    metrics_idx <- 1
-    union <- c(predicted$global, predicted$local)
-    models_name <-
-      attributes(lapply(union, function(m) {
-        m$name
-      }))$names
-    for (m in metrics) {
-      print(paste0("Computing ", m$name, "..."))
-      tmp <- NULL
-      tmp$name <- m$name
-      tmp$tab <- matrix(nrow = h, ncol = length(union))
-      model_i = 1
-      for (model_prediction in union) {
-        for (h_ in 1:h) {
-          tmp$tab[h_, model_i] <-
-            m$compute(model_prediction$pf[, h_], actual[, h_], mase_scal)
-        }
-        model_i = model_i + 1
-      }
-      rownames(tmp$tab) <- paste0("h=", 1:h)
-      colnames(tmp$tab) <- models_name
-      tmp$tab <- as.table(tmp$tab)
-      tables[[metrics_idx]] <- tmp
-      metrics_idx = metrics_idx + 1
+metrics.compute_metrics <- function(predicted, actual, metrics, h) {
+  tables <- list()
+  metrics_idx <- 1
+  union <- c(predicted$global, predicted$local)
+  models_name <-
+    attributes(lapply(union, function(m) {
+      m$name
+    }))$names
+  for (m in metrics) {
+    print(paste0("Computing ", m$name, "..."))
+    tab <- matrix(nrow = 1, ncol = length(union))
+    model_i = 1
+    for (model_prediction in union) {
+      tab[1, model_i] <-
+        mean(m$compute(model_prediction$pf, actual))
+      model_i = model_i + 1
     }
-    tables
+    colnames(tab) <- models_name
+    rownames(tab) <- m$name
+    tables[[metrics_idx]] <- as.data.frame(tab)
+    metrics_idx = metrics_idx + 1
   }
+  metrics_table <- do.call(rbind, tables)
+  metrics_table
+}

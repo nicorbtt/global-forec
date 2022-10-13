@@ -34,21 +34,32 @@ LinearModel <- R6Class(
                  train_colnames = NULL),
   public = list(
     initialize = function(xtrain, ytrain) {
-      xtrain <- as.data.frame(xtrain)
-      lm_train <- cbind(xtrain, ytrain)
-      lm.fit <- lm(lm_train, formula = ytrain ~ .)
+      colnames(xtrain) <- NULL
+      lm_train <- data.frame(X = xtrain, Y = ytrain)
+      if (length(xtrain[1, ]) == 1) {
+        train_colnames <- "X"
+      } else {
+        train_colnames <- paste("X", 1:length(xtrain[1, ]), sep = ".")
+      }
+      formula_str <-
+        paste0("Y ~ ", paste(train_colnames, collapse = " + "), " - 1")
+      lm.fit <- lm(as.formula(formula_str), data = lm_train)
       private$fitted_model <- lm.fit
-      private$train_colnames <- colnames(xtrain)
+      private$train_colnames <- train_colnames
     },
     predict = function(xtest, h = 1) {
       xtest <- as.data.frame(xtest)
       pf  <- matrix(nrow = length(xtest[, 1]), ncol = h)
       for (i in 1:h) {
         if (i > 1) {
-          xtest <- cbind(xtest[2:ncol(xtest)], y_hat_h)
+          if (length(xtest[1,])==1) {
+            xtest <- data.frame(y_hat_h)
+          } else {
+            xtest <- cbind(xtest[2:ncol(xtest)], y_hat_h)
+          }
         }
         colnames(xtest) <- private$train_colnames
-        y_hat_h <- predict(private$fitted_model, xtest)
+        y_hat_h <- predict(private$fitted_model, newdata = xtest)
         pf[, i] <- y_hat_h
       }
       forecast <- NULL
@@ -106,7 +117,7 @@ JointModel <- R6Class(
         #MEAN
         L <- length(xtest[, 1])
         mu_x_vec <- t(matrix(unlist(rep(private$mu_x, L)),
-                             nrow = length(xtest[1,]),
+                             nrow = length(xtest[1, ]),
                              ncol = L))
         x_mu_x_vec <- xtest - mu_x_vec
         y_hat_h <-
@@ -256,7 +267,7 @@ DeepNetAR <- R6Class(
       deep_model %>% fit(
         as.matrix(xtrain),
         as.matrix(ytrain),
-        batch_size = 32,
+        batch_size = 1024,
         epochs = 1000,
         validation_split = VAL_SIZE,
         #validation_data = list(xval, yval),

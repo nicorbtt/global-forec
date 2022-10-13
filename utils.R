@@ -40,7 +40,7 @@ utils.mase_normalize <- function(serie, params = NULL) {
       frq = 1
     }
     mase_scal <- mean(abs(
-      utils::head(as.vector(serie), -frq) - utils::tail(as.vector(serie), -frq)
+      utils::head(as.vector(serie),-frq) - utils::tail(as.vector(serie),-frq)
     ) ** 1)
   } else {
     mase_scal <- params$mase_scal
@@ -145,14 +145,15 @@ utils.prepare_dataset <-
   }
 
 # Build lagged dataset of lag LAG
-utils.build_lagged_dataset <- function(data, LAG, h) {
+utils.build_lagged_dataset <- function(data, LAG, h, verbose = TRUE) {
   # N.B.
   # - only keep time series which length is greater than LAG
   # - h should be the same for each time series, i.e length(xx)
   data <-
     data[as.vector(unlist(lapply(data, function(s)
       length(s$x) > LAG)))]
-  print(paste0("Processed #", length(data), " time series"))
+  if (verbose)
+    print(paste0("Processed #", length(data), " time series"))
   lagged_list <- list()
   for (i in 1:length(data)) {
     lagged_list[[i]] <- embed(data[[i]]$pp$x, (LAG + 1))[, (LAG + 1):1]
@@ -164,8 +165,11 @@ utils.build_lagged_dataset <- function(data, LAG, h) {
   X_test <- matrix(nrow = length(data), ncol = LAG)
   Y_test <- matrix(nrow = length(data), ncol = h)
   for (i in 1:length(data)) {
-    X_test[i,] <- as.numeric(tail(data[[i]]$pp$x, LAG))
-    Y_test[i,] <- as.numeric(data[[i]]$pp$xx)
+    X_test[i, ] <- as.numeric(tail(data[[i]]$pp$x, LAG))
+    Y_test[i, ] <- as.numeric(data[[i]]$pp$xx)
+  }
+  if (is.numeric(X_train)) {
+    X_train <- as.matrix(X_train, nrow=length(X_train), ncol=1)
   }
   colnames(X_test) <- colnames(XY)[1:LAG]
   rm(lagged_list, XY)

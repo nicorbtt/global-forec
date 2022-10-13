@@ -23,17 +23,19 @@ data <-
   data_origin[as.vector(unlist(lapply(data_origin, function(s)
     s$period == SUBSET)))]
 FORECASTING_HORIZON <- data[[1]]$h
-LAG <- 20
-collection <- utils.build_lagged_dataset(data, 
-                                         LAG, 
+LAG <- 25
+collection <- utils.build_lagged_dataset(data,
+                                         LAG,
                                          FORECASTING_HORIZON)
 rm(data)
 
 y_hat <- NULL
 ### GLOBAL MODELS -------------------------------------------------------------
 y_hat$global <- NULL
-# lm <- LinearModel$new(collection$X_train, collection$y_train) # LINEAR
-# y_hat$global$Linear <- lm$predict(collection$X_test, h = FORECASTING_HORIZON)
+lm <-
+  LinearModel$new(collection$X_train, collection$y_train) # LINEAR
+y_hat$global$Linear <-
+  lm$predict(collection$X_test, h = FORECASTING_HORIZON)
 #
 jm <- JointModel$new(collection$X_train, collection$y_train) # JOINT
 y_hat$global$Joint <-
@@ -61,42 +63,19 @@ series_id <-
     s$ID)))
 current_idx = 1
 for (i in series_id) {
-  y_hat$local$auto.arima$pf[current_idx, ] <-
+  y_hat$local$auto.arima$pf[current_idx,] <-
     as.numeric(data_origin[[i]]$lforecast$auto_arima$mean)
-  y_hat$local$ets$pf[current_idx, ] <-
+  y_hat$local$ets$pf[current_idx,] <-
     as.numeric(data_origin[[i]]$lforecast$ets$mean)
-  y_hat$local$theta$pf[current_idx, ] <-
+  y_hat$local$theta$pf[current_idx,] <-
     as.numeric(data_origin[[i]]$lforecast$theta$mean)
   current_idx = current_idx + 1
 }
 
-mase_scal <-
-  as.numeric(lapply(collection$data, function(x)
-    x$pp$mase_scal))
-tables <- metrics.compute_metrics(
+metrics_table <- metrics.compute_metrics(
   predicted = y_hat,
   actual = collection$Y_test,
-  mase_scal = mase_scal,
   metrics = list(metrics.mase, metrics.smape),
   h = FORECASTING_HORIZON
 )
-
-plots <- plotting.plot_metrics(tables)
-for (i in 1:length(plots)) {
-  plots[[i]]$p <- plots[[i]]$p +
-    scale_x_continuous(breaks = scales::pretty_breaks(n = FORECASTING_HORIZON)) +
-    ggtitle(paste(
-      DNAME,
-      " -",
-      SUBSET,
-      "- LAG",
-      LAG,
-      " ",
-      plots[[i]]$metric,
-      ",   #",
-      N,
-      " time series"
-    ))
-}
-
-plots[[1]]$p
+metrics_table
