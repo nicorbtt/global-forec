@@ -18,44 +18,48 @@ source("utils.R")
 
 library(reshape)
 library(ggplot2)
+library(testit)
 
-DNAME <- "M1"
+DNAME <- "M3"
 data_origin <- utils.load_dataset(DNAME)
 SUBSET <- "MONTHLY"
-data <-
-  data_origin[as.vector(unlist(lapply(data_origin, function(s)
-    s$period == SUBSET)))]
-FORECASTING_HORIZON <- data[[1]]$h
+data <- data_origin[as.vector(unlist(lapply(data_origin, function(s) s$period == SUBSET)))]
+FORECASTING_HORIZON <- unique(as.vector(unlist(lapply(data, function(x) x$h))))
+assert(length(FORECASTING_HORIZON)==1)
 
 metrics <- NULL
 metrics$glinear <- list()
+metrics$gjoint <- list()
 
-MAX_LAG <- 30
+MIN_LAG <- 1
+MAX_LAG <- 50
 pb = txtProgressBar(
-  min = 0,
+  min = MIN_LAG,
   max = MAX_LAG,
   initial = 0,
   style = 3,
   width = 100
 )
-for (LAG in 1:MAX_LAG) {
+for (LAG in MIN_LAG:MAX_LAG) {
   collection <- utils.build_lagged_dataset(data,
                                            LAG,
                                            FORECASTING_HORIZON,
                                            verbose = FALSE)
   lm <- LinearModel$new(collection$X_train, collection$y_train)
   y_hat <- lm$predict(collection$X_test, h = FORECASTING_HORIZON)
-  metrics$linearAR[[LAG]] <-
-    mean(metrics.mase$compute(y_hat$pf, collection$Y_test))
+  metrics$glinear[[LAG-MIN_LAG+1]] <- mean(metrics.mase$compute(y_hat$pf, collection$Y_test))
+  
+  jm <- JointModel$new(collection$X_train, collection$y_train)
+  y_hat <- jm$predict(collection$X_test, h = FORECASTING_HORIZON)
+  metrics$gjoint[[LAG-MIN_LAG+1]] <- mean(metrics.mase$compute(y_hat$pf, collection$Y_test))
+  
   local <- NULL
   N <- length(collection$data)
   local$auto.arima$pf <-
     matrix(nrow = N, ncol = FORECASTING_HORIZON)
   local$ets$pf <- matrix(nrow = N, ncol = FORECASTING_HORIZON)
   local$theta$pf <- matrix(nrow = N, ncol = FORECASTING_HORIZON)
-  series_id <-
-    as.vector(unlist(lapply(collection$data, function(s)
-      s$ID)))
+  series_id <- as.vector(unlist(lapply(collection$data, function(s) s$ID)))
   current_idx = 1
   for (i in series_id) {
     local$auto.arima$pf[current_idx, ] <-
@@ -66,28 +70,26 @@ for (LAG in 1:MAX_LAG) {
       data_origin[[i]]$lforecast$theta$mean
     current_idx = current_idx + 1
   }
-  metrics$auto.arima[[LAG]] <-
+  metrics$auto.arima[[LAG-MIN_LAG+1]] <-
     mean(rowMeans(abs(
       local$auto.arima$pf - collection$Y_test
     )))
-  metrics$ets[[LAG]] <-
+  metrics$ets[[LAG-MIN_LAG+1]] <-
     mean(rowMeans(abs(local$ets$pf - collection$Y_test)))
-  metrics$theta[[LAG]] <-
+  metrics$theta[[LAG-MIN_LAG+1]] <-
     mean(rowMeans(abs(local$theta$pf - collection$Y_test)))
   setTxtProgressBar(pb, LAG)
 }
 
 close(pb)
 
-metrics$tab <- matrix(nrow = 4, ncol = MAX_LAG)
-metrics$tab[1,] <- unlist(metrics$linearAR)
-metrics$tab[2,] <- unlist(metrics$auto.arima)
-metrics$tab[3,] <- unlist(metrics$ets)
-metrics$tab[4,] <- unlist(metrics$theta)
+metrics$tab <- matrix(nrow = length(attributes(metrics)$names), ncol = LAG-MIN_LAG+1)
+for (i in 1:length(attributes(metrics)$names)-1) {
+  metrics$tab[i,] <- as.vector(unlist(metrics[i]))
+}
 metrics$tab <- t(metrics$tab)
-metrics$tab <- cbind(metrics$tab, c(1:MAX_LAG))
-colnames(metrics$tab) <-
-  c("Global Linear AR", "ARIMA", "ETS", "THETA", "LAG")
+metrics$tab <- cbind(metrics$tab, c(MIN_LAG:MAX_LAG))
+colnames(metrics$tab) <- c("Global Linear AR", "Joint", "ARIMA", "ETS", "THETA", "LAG")
 metrics$tab <- melt(as.data.frame(metrics$tab), id = c("LAG"))
 colnames(metrics$tab) <- c("LAG", "Model", "MASE")
 metrics$tab
@@ -95,7 +97,8 @@ metrics$tab
 p <-
   ggplot(data = metrics$tab, aes(x = LAG, y = MASE, group = Model)) +
   geom_line(aes(color = Model, linetype = Model)) +
-  scale_color_manual(values = c("#000000", "#948b85", "#eb7d34", "#2d83c4")) +
+  scale_color_manual(values = c("#000000", "#ff0000", "#948b85", "#eb7d34", "#2d83c4")) +
   theme_classic() +
-  scale_linetype_manual(values = c("solid", "dashed", "dotted", "twodash"))
+  scale_linetype_manual(values = c("solid", "solid", "dashed", "dotted", "twodash"))
+p <- p + xlim(10,50) + ylim(0.80,1.25)
 p

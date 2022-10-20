@@ -74,59 +74,65 @@ JointModel <- R6Class(
   classname = "JointModel",
   private = list(
     S = NULL,
+    Sx = NULL,
+    Sxy = NULL,
+    Syx = NULL,
+    vary = NULL,
     inv_Sx = NULL,
-    S_yx = NULL,
     mu_x = NULL,
-    mu_y = NULL,
-    var_y = NULL,
-    cache = NULL,
-    train_colnames = NULL
+    mu_y = NULL
   ),
   public = list(
     initialize = function(xtrain, ytrain) {
+      colnames(xtrain) <- NULL
       xy      = cbind(xtrain, ytrain)
       k       = ncol(xy)
       S       = cov.shrink(xy, verbose = FALSE)
-      inv_Sx  = solve(S[1:(k - 1), 1:(k - 1)])
-      S_yx    = t(S[k, 1:(k - 1)])
+      Sx      = as.matrix(S[1:(k - 1), 1:(k - 1)], nrow=k-1, ncol=k-1)
+      Sxy     = as.matrix(S[1:(k - 1), k])
+      Syx     = t(as.matrix(S[k, 1:(k - 1)]))
+      vary    = S[k, k]
+      inv_Sx  = solve(Sx)
       mu_x    = colMeans(xtrain)
       mu_y    = mean(ytrain)
-      var_y   = var(ytrain)
-      cache   = S_yx  %*% inv_Sx
-      
       private$S <- S
+      private$Sx <- Sx
+      private$Sxy <- Sxy
+      private$Syx <- Syx
+      private$vary <- vary
       private$inv_Sx <- inv_Sx
-      private$S_yx <- S_yx
       private$mu_x <- mu_x
       private$mu_y <- mu_y
-      private$var_y <- var_y
-      private$cache <- cache
-      private$train_colnames <- colnames(xtrain)
     },
     predict = function(xtest, h = 1) {
-      var <- vector(length = h)
-      pf  <- matrix(nrow = length(xtest[, 1]), ncol = h)
+      colnames(xtest) <- NULL
+      L <- length(xtest[, 1])
+      k <- length(xtest[1, ])
+      mu_x <- t(matrix(unlist(rep(private$mu_x, L)), nrow = length(xtest[1, ]), ncol = L))
+      conditional_var <- vector(length = h)
+      conditional_expectation  <- matrix(nrow = length(xtest[, 1]), ncol = h)
       for (i in 1:h) {
+        Sx_ <- private$Sx
         if (i > 1) {
-          xtest <- cbind(xtest[, 2:ncol(xtest)], y_hat_h)
-          colnames(xtest) <- private$train_colnames
+          if (length(xtest[1,])==1) {
+            xtest[,1] <- conditional_expectation[, i-1]
+          } else {
+            xtest <- cbind(xtest[, 2:ncol(xtest)], conditional_expectation[,i-1])
+          }
+          # ! update Sx !
+          for (u in 1:(i-1)) {
+            Sx_[k-u+1, k-u+1] <- Sx_[k-u+1, k-u+1] + sum(conditional_var[1:(i-u)])
+          }
         }
-        #VAR (#TODO fix variance)
-        var[i] <-
-          sum(var) + private$var_y - private$cache %*% t(private$S_yx)
-        #MEAN
-        L <- length(xtest[, 1])
-        mu_x_vec <- t(matrix(unlist(rep(private$mu_x, L)),
-                             nrow = length(xtest[1, ]),
-                             ncol = L))
-        x_mu_x_vec <- xtest - mu_x_vec
-        y_hat_h <-
-          as.vector(private$cache %*% t(x_mu_x_vec) + private$mu_y)
-        pf[, i] <- y_hat_h
+        inv_Sx_ <- solve(Sx_) # private$inv_Sx 
+        # Var(Y|X)
+        conditional_var[i] <- private$vary - private$Syx %*% inv_Sx_ %*% private$Sxy
+        # E(Y|X)
+        conditional_expectation[, i] <- as.vector(private$Syx %*% inv_Sx_ %*% t(xtest - mu_x) + private$mu_y)
       }
       forecast <- NULL
-      forecast$pf <- pf
-      forecast$var <- var
+      forecast$pf <- conditional_expectation
+      forecast$var <- conditional_var
       forecast
     }
   )

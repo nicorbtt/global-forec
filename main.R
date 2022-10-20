@@ -16,13 +16,16 @@ source("metrics.R")
 source("utils.R")
 source("plotting.R")
 
-DNAME <- "M1"
+library(testit)
+
+DNAME <- "M3"
 data_origin <- utils.load_dataset(DNAME)
 SUBSET <- "MONTHLY"
 data <-
   data_origin[as.vector(unlist(lapply(data_origin, function(s)
     s$period == SUBSET)))]
-FORECASTING_HORIZON <- data[[1]]$h
+FORECASTING_HORIZON <- unique(as.vector(unlist(lapply(data, function(x) x$h))))
+assert(length(FORECASTING_HORIZON)==1)
 LAG <- 25
 collection <- utils.build_lagged_dataset(data,
                                          LAG,
@@ -32,14 +35,11 @@ rm(data)
 y_hat <- NULL
 ### GLOBAL MODELS -------------------------------------------------------------
 y_hat$global <- NULL
-lm <-
-  LinearModel$new(collection$X_train, collection$y_train) # LINEAR
-y_hat$global$Linear <-
-  lm$predict(collection$X_test, h = FORECASTING_HORIZON)
+lm <- LinearModel$new(collection$X_train, collection$y_train) # LINEAR
+y_hat$global$Linear <- lm$predict(collection$X_test, h = FORECASTING_HORIZON)
 #
 jm <- JointModel$new(collection$X_train, collection$y_train) # JOINT
-y_hat$global$Joint <-
-  jm$predict(collection$X_test, h = FORECASTING_HORIZON)
+y_hat$global$Joint <- jm$predict(collection$X_test, h = FORECASTING_HORIZON)
 #
 # rf <- RandomForest$new(collection$X_train, collection$y_train) # RANDOM FOREST
 # y_hat$global$RandomForest <- rf$predict(collection$X_test, h = FORECASTING_HORIZON)
@@ -79,3 +79,4 @@ metrics_table <- metrics.compute_metrics(
   h = FORECASTING_HORIZON
 )
 metrics_table
+

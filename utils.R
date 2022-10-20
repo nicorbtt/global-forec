@@ -12,6 +12,9 @@
 ## ----------------------------------------------------------------------------
 
 
+
+source("models.R")
+
 # Time series normalization: y = (x - min) / (max - min) ----------------------
 utils.normalize <- function(serie, params = NULL) {
   if (is.null(params)) {
@@ -104,10 +107,13 @@ utils.load_dataset <- function(dname) {
 }
 
 # Prepare dataset function
-utils.prepare_dataset <-
-  function(dname, norm_mode = "mase_normalize") {
+utils.prepare_dataset <- function(dname, norm_mode = "mase_normalize") {
     # 1) Load dataset and check format ------------------------------------------
     data <- utils.load_dataset(dname)
+    print(paste("#",length(data), " time series"))
+    for (i in 1:length(data)) {
+      data[[i]]$ID <- i
+    }
     for (a in c("ID", "h", "x", "xx")) {
       if (!a %in% attributes(data[[1]])$names) {
         stop(paste0("attribute $", a, " doesn't exist!"))
@@ -135,14 +141,19 @@ utils.prepare_dataset <-
           "wrong normalization mode. chose one in {normalize, mase_normalize, standardize, NULL}"
         )
       }
+      data[[i]] <- serie
     }
     # 3) Local Methods {AUTO.ARIMA, ETS, THETA} ---------------------------------
+    print("Computing local methods (loops) - AUTO.ARIMA, ETS, THETA")
     data <- local_methods.arima(data, cores = 8)
     data <- local_methods.ets(data, cores = 8)
     data <- local_methods.theta(data, cores = 8)
     # 4) Save dataset -----------------------------------------------------------
     saveRDS(data, file = paste0(DATASET_FOLDER, dname, ".rds"))
-  }
+    print(paste0("Dataset saved at ", DATASET_FOLDER, dname, ".rds"))
+}
+
+#utils.prepare_dataset("<dname>")
 
 # Build lagged dataset of lag LAG
 utils.build_lagged_dataset <- function(data, LAG, h, verbose = TRUE) {

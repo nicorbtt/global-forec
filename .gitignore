@@ -50,3 +50,6 @@ rsconnect/
 
 # dataset folder
 data/*
+results/*
+
+.token*
